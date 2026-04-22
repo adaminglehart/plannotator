@@ -8,9 +8,9 @@
  * creator must be able to refresh their tab without losing admin capability.
  *
  * Threat model: anything that can read sessionStorage in this origin already
- * controls the tab. The adminSecret grants lock/unlock/delete on one specific
- * room; leaking it out of sessionStorage would only happen via XSS in the
- * same origin, at which point the attacker already has full control.
+ * controls the tab. The adminSecret grants delete on one specific room;
+ * leaking it out of sessionStorage would only happen via XSS in the same
+ * origin, at which point the attacker already has full control.
  *
  * Values are stored as base64url strings so a caller consuming
  * `loadAdminSecret()` decodes the same format `parseRoomUrl()` produces from

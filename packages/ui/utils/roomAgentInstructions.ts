@@ -165,6 +165,6 @@ Demo confirms each comment's echo per heading and exits non-zero if any comment 
 - \`Missing --url\` / \`Missing --user\` / \`Missing --type\` — add the flag.
 - \`Timed out waiting for snapshot\` — the URL parsed but the room service is unreachable. Check you can open the URL in a browser.
 - \`unknown --block\` — that block id isn't in the current plan. Run \`comment --list-blocks\` to see the valid set.
-- \`<code>: <message>\` on a comment — the server rejected the op. Most common: \`room_locked\` (an admin locked the room; read-only). Wait and retry, or move on.
+- \`<code>: <message>\` on a comment — the server rejected the op. The message names the reason (e.g. \`validation_error\` for a malformed payload). Wait and retry, or move on.
 `;
 }

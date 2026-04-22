@@ -339,7 +339,7 @@ export class RoomDurableObject extends DurableObject<Env> {
       ws.close(WS_CLOSE_ROOM_UNAVAILABLE, WS_CLOSE_REASON_ROOM_EXPIRED);
       return null;
     }
-    // Lazy expiry: active/locked room past retention deadline
+    // Lazy expiry: active room past retention deadline
     if (hasRoomExpired(roomState.expiresAt)) {
       await this.markExpired(roomState, ws);
       ws.close(WS_CLOSE_ROOM_UNAVAILABLE, WS_CLOSE_REASON_ROOM_EXPIRED);
@@ -417,7 +417,7 @@ export class RoomDurableObject extends DurableObject<Env> {
 
       safeLog('room:event-sequenced', { roomId: roomState.roomId, seq: roomState.seq, clientId: meta.clientId });
     } else {
-      // Presence — allowed in active and locked rooms
+      // Presence — allowed in any non-terminal room state
       const transport: RoomTransportMessage = {
         type: 'room.presence',
         envelope,
@@ -641,21 +641,21 @@ export class RoomDurableObject extends DurableObject<Env> {
     // ADMIN ERROR-CODE CONTRACT
     // -------------------------
     // Every error code emitted from this method AND from helpers it calls
-    // (applyLock, applyUnlock, applyDelete, admin-scoped branches of
-    // handleAdminChallengeRequest) must be listed in the client's
-    // ADMIN_SCOPED_ERROR_CODES Set in packages/shared/collab/client-runtime/client.ts.
-    // That Set gates which room.error payloads reject a pending admin promise;
-    // a code that fires here but is missing from the Set leaves the client
-    // hanging until AdminTimeoutError. A code that fires on the event channel
-    // but is ADDED to the Set (e.g. room_locked) wrongly cancels unrelated
-    // in-flight admin commands. When adding/renaming/removing admin-path
-    // codes, update the client Set in the same change.
+    // (applyDelete, admin-scoped branches of handleAdminChallengeRequest)
+    // must be listed in the client's ADMIN_SCOPED_ERROR_CODES Set in
+    // packages/shared/collab/client-runtime/client.ts. That Set gates which
+    // room.error payloads reject a pending admin promise; a code that
+    // fires here but is missing from the Set leaves the client hanging
+    // until AdminTimeoutError. A code that fires on the event channel but
+    // is ADDED to the Set (e.g. validation_error) wrongly cancels
+    // unrelated in-flight admin commands. When adding/renaming/removing
+    // admin-path codes, update the client Set in the same change.
     const validated = validateAdminCommandEnvelope(msg);
     if (isValidationError(validated)) {
       // Admin-scoped code so the client can distinguish admin-flow failures
-      // from event-channel failures (e.g. room_locked fires on the event
-      // channel while a lock command is in flight — rejecting pendingAdmin
-      // on those would be wrong).
+      // from event-channel failures (e.g. validation_error fires on the
+      // event channel while an admin command is in flight — rejecting
+      // pendingAdmin on those would be wrong).
       this.sendAdminError(ws, AdminErrorCode.ValidationError, validated.error);
       return;
     }

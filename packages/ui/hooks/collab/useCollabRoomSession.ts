@@ -103,9 +103,9 @@ export function useCollabRoomSession(
     // Rebuild the admin URL from whichever source carries the admin
     // secret: the URL fragment (creator's first visit) OR the
     // adminSecretOverride prop (sessionStorage recovery on refresh).
-    // Without this fallback, a recovered admin can lock/unlock/delete
-    // but the RoomPanel's "Show admin recovery link" disclosure has
-    // nothing to copy — confusing because the admin controls work fine.
+    // Without this fallback, a recovered admin can delete but the
+    // "Show admin recovery link" disclosure has nothing to copy —
+    // confusing because the admin controls work fine.
     let adminSecretBytes: Uint8Array | undefined = parsed.adminSecret;
     if (!adminSecretBytes && options.adminSecretOverride) {
       try {

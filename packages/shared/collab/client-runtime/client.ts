@@ -160,9 +160,9 @@ const ADMIN_COMMAND_TIMEOUT_MS = 5_000;
 /**
  * `room.error` codes that are emitted exclusively from the admin command
  * path on the server. A pending admin command rejects ONLY when a room.error
- * with one of these codes arrives; other codes (e.g. `room_locked`,
- * `validation_error` from an event-channel op) are event-channel failures
- * and must not cancel an in-flight admin command.
+ * with one of these codes arrives; other codes (e.g. `validation_error`
+ * from an event-channel op) are event-channel failures and must not
+ * cancel an in-flight admin command.
  *
  * Derived from the shared `ADMIN_ERROR_CODES` tuple so there is exactly
  * one source of truth across the server (`sendAdminError` call sites in
@@ -861,16 +861,16 @@ export class CollabRoomClient {
     }
     if (msg.type === 'room.status') {
       // Route through the queue so a status broadcast that arrives after a
-      // still-decrypting event doesn't resolve an admin command (e.g. lock)
-      // before the preceding event has been applied.
+      // still-decrypting event doesn't resolve an admin command before the
+      // preceding event has been applied.
       const status = (msg as { status: RoomStatus }).status;
       this.enqueue(async () => { this.handleRoomStatus(status, gen); });
       return;
     }
     if (msg.type === 'room.error') {
       // Route through the queue so an error that references a specific event
-      // (e.g. room_locked for an in-flight op) can't beat the event/status
-      // messages that preceded it in wire order.
+      // (e.g. validation_error for an in-flight op) can't beat the event /
+      // status messages that preceded it in wire order.
       const err = msg as unknown as Extract<RoomTransportMessage, { type: 'room.error' }>;
       this.enqueue(async () => { this.handleRoomError(err, gen); });
       return;
@@ -1317,11 +1317,11 @@ export class CollabRoomClient {
     this.emitter.emit('error', { code: msg.code, message: msg.message });
 
     // Reject pending admin ONLY for admin-scoped error codes. Event-channel
-    // errors like `room_locked` / `validation_error` can land while an admin
-    // command is in flight (e.g. a concurrent annotation op hit the locked
-    // room just after a lock was accepted); rejecting pendingAdmin on those
-    // would fail a successful admin command whose `room.status: locked` is
-    // still in-flight. Admin-scoped codes are the ones the server emits
+    // errors like `validation_error` can land while an admin command is in
+    // flight (e.g. a concurrent annotation op hit a validation failure just
+    // after the admin command was accepted); rejecting pendingAdmin on those
+    // would fail a successful admin command whose terminal status broadcast
+    // is still in-flight. Admin-scoped codes are the ones the server emits
     // exclusively from the admin command path.
     if (this.pendingAdmin && scope === 'admin') {
       const pending = this.pendingAdmin;
@@ -1349,8 +1349,8 @@ export class CollabRoomClient {
     // first (empty payloads encrypt faster), leaving the annotation that
     // the remove was meant to delete.
     const next = this.outboundEventQueue.then(async () => {
-      // Re-check liveness inside the queue — a disconnect/lock could have
-      // landed while we were waiting our turn.
+      // Re-check liveness inside the queue — a disconnect or terminal room
+      // status could have landed while we were waiting our turn.
       this.assertConnected();
       if (this.roomStatus !== 'active') {
         throw new Error(`Cannot send annotation op in room status "${this.roomStatus ?? 'unknown'}"`);
@@ -1360,8 +1360,8 @@ export class CollabRoomClient {
       const ciphertext = await encryptEventOp(this.eventKey, op);
 
       // Recheck socket AND roomStatus after async encryption. A queued
-      // `room.status: locked` applied during the encrypt would otherwise let
-      // us send an op the server will reject — the user would see the
+      // terminal `room.status` applied during the encrypt would otherwise
+      // let us send an op the server will reject — the user would see the
       // mutation resolve as "sent" and only learn from async lastError.
       const ws = this.ws;
       if (this.status !== 'authenticated' || !ws) {

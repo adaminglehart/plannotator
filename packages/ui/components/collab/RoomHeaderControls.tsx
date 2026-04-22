@@ -21,8 +21,8 @@ import type { AdminAction } from '../../hooks/collab/useRoomAdminActions';
  * implied); the Room menu exposes copy-link + copy-feedback + admin
  * actions.
  *
- * All mutations (delete, link copy, feedback copy) are owned by the
- * caller. This component is a pure surface.
+ * All mutations (delete, link copy, feedback copy) are owned by
+ * the caller. This component is a pure surface.
  */
 
 export interface RoomHeaderControlsProps {

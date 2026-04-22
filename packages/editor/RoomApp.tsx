@@ -12,8 +12,8 @@
  *
  * Explicitly NOT done here:
  * - Room header UI — `RoomHeaderControls` lives in the editor header
- *   and is owned by `App.tsx`. That's also where lock/unlock/delete,
- *   copy links, and copy consolidated feedback originate.
+ *   and is owned by `App.tsx`. That's also where delete, copy links,
+ *   and copy consolidated feedback originate.
  * - Image-stripped notice and stripped-image count handoff — moved to
  *   `App.tsx` so the banner renders directly under the editor header
  *   instead of as a stacked floating card.

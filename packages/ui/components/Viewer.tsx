@@ -353,8 +353,8 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
     inputMethod,
     // Pinpoint is a mutation path (clicking a block creates an
     // annotation via handlePinpointCodeBlockClick). Disable it in
-    // read-only mode so locked rooms don't expose a click target that
-    // would no-op or make a local-only mark.
+    // read-only mode so the viewer doesn't expose a click target that
+    // would no-op.
     enabled: !readOnly && !toolbarState && !hookCommentPopover && !viewerCommentPopover && !hookQuickLabelPicker && !codeBlockQuickLabelPicker && !(isPlanDiffActive ?? false),
     onCodeBlockClick: handlePinpointCodeBlockClick,
   });
@@ -590,7 +590,7 @@ export const Viewer = forwardRef<ViewerHandle, ViewerProps>(({
 
         {/* Header buttons - top right */}
         <div data-print-hide data-sticky-actions className={`${stickyActions ? 'sticky top-3' : ''} z-30 float-right flex items-start gap-1 md:gap-2 rounded-lg p-1 md:p-2 transition-colors duration-150 ${isStuck ? 'bg-card/95 backdrop-blur-sm shadow-sm' : ''} -mr-3 mt-6 md:-mr-5 md:-mt-5 lg:-mr-7 lg:-mt-7 xl:-mr-9 xl:-mt-9`}>
-          {/* Attachments button — hidden in read-only (e.g. locked room) */}
+          {/* Attachments button — hidden in read-only mode */}
           {!readOnly && onAddGlobalAttachment && onRemoveGlobalAttachment && (
             <AttachmentsButton
               images={globalAttachments}

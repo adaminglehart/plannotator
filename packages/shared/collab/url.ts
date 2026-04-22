@@ -95,8 +95,8 @@ export function buildRoomJoinUrl(
 /**
  * Construct a room URL that includes admin capability (creator-only / recovery).
  *
- * WARNING: adminUrl grants lock/unlock/delete capability. It must NOT be the
- * default share target. Use `buildRoomJoinUrl()` for normal participant sharing.
+ * WARNING: adminUrl grants delete capability. It must NOT be the default
+ * share target. Use `buildRoomJoinUrl()` for normal participant sharing.
  */
 export function buildAdminRoomUrl(
   roomId: string,
