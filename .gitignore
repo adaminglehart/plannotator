@@ -57,3 +57,6 @@ apps/room-service/public/
 # Claude Code local scratch files (per-session locks, etc.). Intentionally
 # ignored so they can't be committed accidentally.
 .claude/scheduled_tasks.lock
+
+# Internal design/spec docs — kept locally, not shipped in PRs.
+specs/
