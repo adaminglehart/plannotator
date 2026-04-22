@@ -683,6 +683,7 @@ export default function plannotator(pi: ExtensionAPI): void {
 			}
 
 			// Denied
+			persistState();
 			const feedbackText = result.feedback || "Plan rejected. Please revise.";
 			return {
 				content: [
