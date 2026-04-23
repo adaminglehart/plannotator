@@ -129,6 +129,10 @@ export async function startReviewServer(
   let currentGitRef = options.gitRef;
   let currentDiffType: DiffType = options.diffType || "uncommitted";
   let currentError = options.error;
+  // Tracks the base branch the user picked from the UI. Agent review prompts
+  // read this (not gitContext.defaultBranch) so they analyze the same diff
+  // the reviewer is currently looking at.
+  let currentBase = gitContext?.defaultBranch || "main";
 
   // Agent jobs — background process manager (late-binds serverUrl via getter)
   let serverUrl = "";
@@ -142,7 +146,7 @@ export async function startReviewServer(
     async buildCommand(provider, config) {
       const cwd = resolveAgentCwd();
       const hasAgentLocalAccess = !!options.agentCwd || !!gitContext;
-      const userMessageOptions = { defaultBranch: gitContext?.defaultBranch, hasLocalAccess: hasAgentLocalAccess };
+      const userMessageOptions = { defaultBranch: currentBase, hasLocalAccess: hasAgentLocalAccess };
 
       if (provider === "tour") {
         return tour.buildCommand({
@@ -456,6 +460,7 @@ export async function startReviewServer(
               currentPatch = result.patch;
               currentGitRef = result.label;
               currentDiffType = newDiffType;
+              currentBase = base;
               currentError = result.error;
 
               return Response.json({
