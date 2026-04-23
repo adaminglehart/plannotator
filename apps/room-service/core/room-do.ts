@@ -17,7 +17,6 @@ import type {
   AuthResponse,
   AuthAccepted,
   AdminChallenge,
-  AdminCommandEnvelope,
   CreateRoomRequest,
   CreateRoomResponse,
   ServerEnvelope,

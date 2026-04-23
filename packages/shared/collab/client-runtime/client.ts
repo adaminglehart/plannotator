@@ -32,7 +32,6 @@ import type {
   RoomAnnotation,
   RoomEventClientOp,
   RoomServerEvent,
-  RoomSnapshot,
   RoomTransportMessage,
   ServerEnvelope,
 } from '../types';
@@ -989,7 +988,7 @@ export class CollabRoomClient {
     }
   }
 
-  private handleAuthAccepted(accepted: AuthAccepted): void {
+  private handleAuthAccepted(_accepted: AuthAccepted): void {
     // Defense-in-depth: a rotated/disconnected client should not promote
     // itself to 'authenticated' on a late auth.accepted from a retired socket.
     if (this.userDisconnected) return;
