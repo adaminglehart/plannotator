@@ -970,6 +970,7 @@ const ReviewApp: React.FC = () => {
         gitRef: string;
         diffType: string;
         base?: string;
+        gitContext?: GitContext;
         error?: string;
       };
 
@@ -983,6 +984,22 @@ const ReviewApp: React.FC = () => {
       if (data.base) {
         setSelectedBase(data.base);
         setCommittedBase(data.base);
+      }
+      // Merge only the per-cwd fields so the sidebar reflects the worktree
+      // we're now in. Keep the original `worktrees` list (already filtered to
+      // exclude the server's startup cwd — replacing it with the new context's
+      // list would duplicate the "Main repo" entry) and `availableBranches`
+      // (shared across worktrees of the same repo).
+      if (data.gitContext) {
+        setGitContext((prev) => {
+          if (!prev) return data.gitContext!;
+          return {
+            ...prev,
+            currentBranch: data.gitContext!.currentBranch,
+            defaultBranch: data.gitContext!.defaultBranch,
+            diffOptions: data.gitContext!.diffOptions,
+          };
+        });
       }
       setActiveFileIndex(0);
       setPendingSelection(null);

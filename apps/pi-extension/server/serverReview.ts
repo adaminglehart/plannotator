@@ -39,6 +39,7 @@ import {
 
 import { createEditorAnnotationHandler } from "./annotations.js";
 import { createAgentJobHandler } from "./agent-jobs.js";
+import type { AgentJobInfo } from "../generated/agent-jobs.js";
 import { createExternalAnnotationHandler } from "./external-annotations.js";
 import {
 	handleDraftRequest,
@@ -229,8 +230,22 @@ export async function startReviewServer(options: {
 			const hasAgentLocalAccess = !!options.agentCwd || !!options.gitContext;
 			const userMessageOptions = { defaultBranch: currentBase, hasLocalAccess: hasAgentLocalAccess };
 
+			// Snapshot the diff context at launch (see review.ts buildCommand
+			// for the rationale — keeps downstream "Copy All" honest across
+			// subsequent context switches).
+			const worktreeParts = currentDiffType.startsWith("worktree:")
+				? parseWorktreeDiffType(currentDiffType)
+				: null;
+			const diffContext: AgentJobInfo["diffContext"] | undefined = options.prMetadata
+				? undefined
+				: {
+						mode: (worktreeParts?.subType ?? currentDiffType) as string,
+						base: currentBase,
+						worktreePath: worktreeParts?.path ?? null,
+					};
+
 			if (provider === "tour") {
-				return tour.buildCommand({
+				const built = await tour.buildCommand({
 					cwd,
 					patch: currentPatch,
 					diffType: currentDiffType,
@@ -238,6 +253,7 @@ export async function startReviewServer(options: {
 					prMetadata: options.prMetadata,
 					config,
 				});
+				return built ? { ...built, diffContext } : built;
 			}
 
 			const userMessage = buildCodexReviewUserMessage(currentPatch, currentDiffType, userMessageOptions, options.prMetadata);
@@ -249,7 +265,7 @@ export async function startReviewServer(options: {
 				const outputPath = generateOutputPath();
 				const prompt = CODEX_REVIEW_SYSTEM_PROMPT + "\n\n---\n\n" + userMessage;
 				const command = await buildCodexCommand({ cwd, outputPath, prompt, model, reasoningEffort, fastMode });
-				return { command, outputPath, prompt, label: "Code Review", model, reasoningEffort, fastMode: fastMode || undefined };
+				return { command, outputPath, prompt, label: "Code Review", model, reasoningEffort, fastMode: fastMode || undefined, diffContext };
 			}
 
 			if (provider === "claude") {
@@ -257,7 +273,7 @@ export async function startReviewServer(options: {
 				const effort = typeof config?.effort === "string" && config.effort ? config.effort : undefined;
 				const prompt = CLAUDE_REVIEW_PROMPT + "\n\n---\n\n" + userMessage;
 				const { command, stdinPrompt } = buildClaudeCommand(prompt, model, effort);
-				return { command, stdinPrompt, prompt, cwd, label: "Code Review", captureStdout: true, model, effort };
+				return { command, stdinPrompt, prompt, cwd, label: "Code Review", captureStdout: true, model, effort, diffContext };
 			}
 
 			return null;
@@ -523,7 +539,6 @@ export async function startReviewServer(options: {
 				const detectedBase = options.gitContext?.defaultBranch || "main";
 				const base = resolveBaseBranch(
 					typeof body.base === "string" ? body.base : undefined,
-					options.gitContext?.availableBranches,
 					detectedBase,
 				);
 				const defaultCwd = options.gitContext?.cwd;
@@ -533,6 +548,21 @@ export async function startReviewServer(options: {
 				currentDiffType = newType;
 				currentBase = base;
 				currentError = result.error;
+
+				// Recompute gitContext for the effective cwd so the client's
+				// sidebar reflects the worktree we're now reviewing.
+				// Best-effort: on failure the client keeps its existing context.
+				let updatedContext: GitContext | undefined;
+				if (options.gitContext) {
+					try {
+						const worktreeParsed = parseWorktreeDiffType(newType);
+						const effectiveCwd = worktreeParsed?.path ?? options.gitContext.cwd;
+						updatedContext = await getGitContextCore(reviewRuntime, effectiveCwd);
+					} catch {
+						/* best-effort */
+					}
+				}
+
 				json(res, {
 					rawPatch: currentPatch,
 					gitRef: currentGitRef,
@@ -540,6 +570,7 @@ export async function startReviewServer(options: {
 					// Echo the resolved base — the server may have fallen back
 					// to the detected default if the requested base was unknown.
 					base: currentBase,
+					...(updatedContext ? { gitContext: updatedContext } : {}),
 					...(currentError ? { error: currentError } : {}),
 				});
 			} catch (err) {
@@ -642,7 +673,6 @@ export async function startReviewServer(options: {
 				const detectedBase = options.gitContext?.defaultBranch || "main";
 				const base = resolveBaseBranch(
 					url.searchParams.get("base") ?? undefined,
-					options.gitContext?.availableBranches,
 					detectedBase,
 				);
 				const defaultCwd = options.gitContext?.cwd;

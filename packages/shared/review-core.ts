@@ -155,33 +155,22 @@ export async function listBranches(
 }
 
 /**
- * Pick a safe base branch. If the user-supplied value doesn't appear in the
- * repo's known branch list, fall back to the detected default. Shared by
- * Bun (`review.ts`) and Pi (`serverReview.ts`) so both runtimes validate the
- * same way.
+ * Pick a safe base branch. Trusts the caller verbatim if they supplied one,
+ * otherwise falls back to the detected default. Shared by Bun (`review.ts`)
+ * and Pi (`serverReview.ts`) so both runtimes behave identically.
+ *
+ * Why trust the caller: the UI picker only ever sends refs from the known
+ * list, and external/programmatic callers may pass tags, SHAs, or refs under
+ * non-`origin` remotes that we must not silently rewrite (a tag `release` is
+ * not the same commit as a branch `origin/release`). Invalid refs surface as
+ * git errors on the next diff call, which is better than silently producing
+ * a patch against the wrong commit.
  */
 export function resolveBaseBranch(
   requested: string | undefined,
-  available: AvailableBranches | undefined,
   detected: string,
 ): string {
-  if (!requested) return detected;
-  if (!available) return requested;
-  const flat = [...available.local, ...available.remote];
-  if (flat.includes(requested)) return requested;
-  // Try stripping a remote prefix (`origin/foo` → `foo`) when only the local exists.
-  const slash = requested.indexOf("/");
-  const stripped = slash !== -1 ? requested.slice(slash + 1) : requested;
-  if (flat.includes(stripped)) return stripped;
-  // Try adding an `origin/` prefix (`foo` → `origin/foo`) when only the remote exists —
-  // happens in fresh clones where local tracking branches were never created.
-  const prefixed = `origin/${requested}`;
-  if (flat.includes(prefixed)) return prefixed;
-  // Unknown refs — trust the caller. Could be a tag, SHA, or a ref under a
-  // non-tracked remote. Git will error naturally if it's truly invalid;
-  // silently swapping to `detected` would hide the caller's intent and
-  // produce a patch that contradicts what the server already computed.
-  return requested;
+  return requested || detected;
 }
 
 export async function getWorktrees(
