@@ -305,4 +305,84 @@ describe("pi review server", () => {
       server.stop();
     }
   }, 15_000);
+
+  test("round-trips the active base branch through /api/diff and /api/diff/switch", async () => {
+    const homeDir = makeTempDir("plannotator-pi-home-");
+    const repoDir = initRepo();
+    process.env.HOME = homeDir;
+    process.chdir(repoDir);
+    process.env.PLANNOTATOR_PORT = String(await reservePort());
+
+    // Create a second branch the picker can switch to, then branch off it so
+    // currentBranch !== defaultBranch and the branch/merge-base options appear.
+    git(repoDir, ["checkout", "-b", "develop"]);
+    writeFileSync(join(repoDir, "develop-file.txt"), "develop\n", "utf-8");
+    git(repoDir, ["add", "develop-file.txt"]);
+    git(repoDir, ["commit", "-m", "develop commit"]);
+    git(repoDir, ["checkout", "-b", "feature/x"]);
+    writeFileSync(join(repoDir, "feature-file.txt"), "feature\n", "utf-8");
+    git(repoDir, ["add", "feature-file.txt"]);
+    git(repoDir, ["commit", "-m", "feature commit"]);
+
+    const gitContext = await getGitContext();
+    const diff = await runGitDiff("uncommitted", gitContext.defaultBranch);
+
+    const server = await startReviewServer({
+      rawPatch: diff.patch,
+      gitRef: diff.label,
+      error: diff.error,
+      diffType: "uncommitted",
+      gitContext,
+      origin: "pi",
+      htmlContent: "<!doctype html><html><body>review</body></html>",
+    });
+
+    try {
+      // Initial load: server echoes the detected default as the active base.
+      const initial = await fetch(`${server.url}/api/diff`).then((r) => r.json()) as {
+        base?: string;
+        gitContext?: { defaultBranch: string };
+      };
+      expect(initial.base).toBe(gitContext.defaultBranch);
+      expect(initial.base).toBe(initial.gitContext?.defaultBranch);
+
+      // Switch to a custom base — response must echo the resolved base.
+      const switchResponse = await fetch(`${server.url}/api/diff/switch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diffType: "branch", base: "develop" }),
+      });
+      expect(switchResponse.status).toBe(200);
+      const switched = await switchResponse.json() as { base?: string; diffType: string };
+      expect(switched.base).toBe("develop");
+      expect(switched.diffType).toBe("branch");
+
+      // Subsequent /api/diff load reflects the switched base — this is what
+      // survives a page refresh / reconnect.
+      const rehydrate = await fetch(`${server.url}/api/diff`).then((r) => r.json()) as {
+        base?: string;
+      };
+      expect(rehydrate.base).toBe("develop");
+
+      // Unknown base falls back to the detected default, and the response
+      // echoes the resolved value so the client can resync.
+      const fallbackResponse = await fetch(`${server.url}/api/diff/switch`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ diffType: "branch", base: "nope-does-not-exist" }),
+      });
+      const fallback = await fallbackResponse.json() as { base?: string };
+      expect(fallback.base).toBe(gitContext.defaultBranch);
+
+      // Feedback to clean up the waitForDecision promise.
+      await fetch(`${server.url}/api/feedback`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ approved: false, feedback: "done", annotations: [] }),
+      });
+      await server.waitForDecision();
+    } finally {
+      server.stop();
+    }
+  }, 15_000);
 });
