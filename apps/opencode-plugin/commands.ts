@@ -157,7 +157,8 @@ export async function handleAnnotateCommand(
   // #570: split --gate / --json out of the args; rest is the file path.
   // --json is accepted silently (OpenCode writes to session, not stdout).
   // parseAnnotateArgs strips leading @ on filePath (reference-mode convention).
-  const { filePath, gate } = parseAnnotateArgs(rawArgs);
+  // `rawFilePath` preserves it for the scoped-package markdown fallback.
+  const { filePath, rawFilePath, gate } = parseAnnotateArgs(rawArgs);
 
   if (!filePath) {
     client.app.log({ level: "error", message: "Usage: /plannotator-annotate <file.md | file.html | https://... | folder/> [--gate] [--json]" });
@@ -207,7 +208,6 @@ export async function handleAnnotateCommand(
       annotateMode = "annotate-folder";
       client.app.log({ level: "info", message: `Opening annotation UI for folder ${resolvedArg}...` });
     } else if (/\.html?$/i.test(resolvedArg)) {
-      // HTML file annotation — convert to markdown via Turndown
       let fileSize: number;
       try {
         fileSize = statSync(resolvedArg).size;
@@ -227,7 +227,11 @@ export async function handleAnnotateCommand(
     } else {
       // Markdown file annotation
       client.app.log({ level: "info", message: `Opening annotation UI for ${filePath}...` });
-      const resolved = await resolveMarkdownFile(filePath, projectRoot);
+      // Strip-first with literal-@ fallback (scoped-package-style names).
+      let resolved = await resolveMarkdownFile(filePath, projectRoot);
+      if (resolved.kind === "not_found" && rawFilePath !== filePath) {
+        resolved = await resolveMarkdownFile(rawFilePath, projectRoot);
+      }
 
       if (resolved.kind === "ambiguous") {
         client.app.log({
