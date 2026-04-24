@@ -20,6 +20,10 @@ class_name = "RoomDurableObject"
 tag = "v1"
 new_sqlite_classes = ["RoomDurableObject"]
 
+[[routes]]
+pattern = "room.plannotator.ai"
+custom_domain = true
+
 [vars]
 ALLOWED_ORIGINS = "https://room.plannotator.ai"
 ALLOW_LOCALHOST_ORIGINS = "true"
