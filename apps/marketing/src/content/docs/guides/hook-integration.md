@@ -1,26 +1,46 @@
 ---
 title: "Hook Integration"
-description: "Use plannotator annotate and annotate-last as review gates from agent hooks — spec-driven workflows, turn-by-turn review, and more."
+description: "Wire Plannotator into Claude Code and Codex hooks for human-in-the-loop review gates on spec artifacts, code output, and agent turns."
 sidebar:
   order: 27
 section: "Guides"
 ---
 
-The `--gate`, `--json`, and `--hook` flags on `plannotator annotate` and `plannotator annotate-last` turn annotation into a structured review decision. This guide shows how to wire them into agent hooks so a human can gate the agent at specific points in a workflow.
+Plannotator can run as a hook command inside Claude Code and Codex. The agent writes a file or finishes a turn, the hook fires, and Plannotator opens a review UI in the browser. The reviewer approves, sends annotations, or dismisses. The hook blocks until a decision is made, then returns the result to the agent in the hook protocol's native format.
 
-See [Annotate → Flags](/docs/commands/annotate/#flags) for the full stdout matrix. The short version:
+One flag does everything:
 
-- `--hook` emits hook-native JSON that works directly with Claude Code and Codex hook protocols. Implies `--gate`. Recommended for hook integrations.
-- `--gate` adds a three-button UX (Approve / Send Annotations / Close).
-- `--json` emits every decision as a structured `{ "decision": "approved" | "annotated" | "dismissed", "feedback": "..." }` object.
+```
+plannotator annotate "$CLAUDE_TOOL_INPUT_file_path" --hook
+```
 
-## Recipe 1: PostToolUse spec gate
+`--hook` implies `--gate` (three-button UX) and emits hook-native JSON. Approve and Close produce empty stdout (hook passes). Send Annotations produces `{"decision":"block","reason":"<feedback>"}` (hook blocks with feedback). Works with both Claude Code and Codex hook protocols.
 
-Spec-driven frameworks (spec-kit, kiro, openspec) generate multiple markdown artifacts per feature — spec.md, plan.md, tasks.md, and so on — each needing human review before the agent builds from it. A PostToolUse hook on Write turns plannotator into a reviewer in the loop.
+## How hooks see Plannotator
 
-### Plaintext (naive)
+Agent hooks communicate via stdout and exit codes. Plannotator always exits `0`. The decision lives in stdout:
 
-Add to `.claude/hooks.json`:
+| Decision | Stdout | Hook behavior |
+|---|---|---|
+| Approve | empty | passes, agent proceeds |
+| Close | empty | passes, agent proceeds |
+| Send Annotations | `{"decision":"block","reason":"<feedback>"}` | blocks, feedback shown to agent |
+
+The `{"decision":"block","reason":"..."}` format is the native protocol for both [Claude Code hooks](https://code.claude.com/docs/en/hooks) and [Codex hooks](https://developers.openai.com/codex/hooks). No wrapper script needed.
+
+## Environment variables in hooks
+
+When a hook fires, the agent exposes tool inputs as environment variables. The most common one for Plannotator:
+
+- **`$CLAUDE_TOOL_INPUT_file_path`** -- the file path the agent passed to the Write/Edit tool. Use this to tell Plannotator which file to annotate.
+
+Other useful variables: `$CLAUDE_TOOL_INPUT_command` (Bash), `$CLAUDE_PROJECT_DIR` (project root). See your agent's hook documentation for the full list.
+
+## Recipe 1: Review every file the agent writes
+
+A PostToolUse hook on Write triggers Plannotator every time the agent creates or modifies a file. This is the core pattern for spec-driven frameworks (spec-kit, kiro, openspec) where each artifact needs human review before the agent builds from it.
+
+Add to `.claude/hooks.json` (or the equivalent for your agent):
 
 ```json
 {
@@ -31,7 +51,7 @@ Add to `.claude/hooks.json`:
         "hooks": [
           {
             "type": "command",
-            "command": "plannotator annotate \"$CLAUDE_TOOL_INPUT_file_path\" --gate",
+            "command": "plannotator annotate \"$CLAUDE_TOOL_INPUT_file_path\" --hook",
             "timeout": 345600
           }
         ]
@@ -41,57 +61,19 @@ Add to `.claude/hooks.json`:
 }
 ```
 
-Behavior:
+The `timeout` is 4 days in seconds. The hook blocks while the reviewer works in the browser, so set it high.
 
-- **Approve** → `The user approved.` on stdout. Claude Code reports the line back and proceeds.
-- **Send Annotations** → feedback markdown on stdout. Claude Code reports the feedback back.
-- **Close** → empty stdout. Claude Code proceeds silently.
+What happens:
 
-### Hook-native mode (`--hook`)
+1. Agent writes `spec.md`.
+2. PostToolUse hook fires, opens Plannotator in the browser.
+3. Reviewer reads the spec, adds inline annotations, clicks **Send Annotations**.
+4. Hook emits `{"decision":"block","reason":"<feedback>"}`. Agent sees the feedback and revises.
+5. Or reviewer clicks **Approve**. Hook emits nothing. Agent proceeds to the next task.
 
-For direct hook integration without a wrapper script, use `--hook`. It emits the JSON protocol that Claude Code and Codex hooks expect natively:
+## Recipe 2: Review every agent turn
 
-```json
-"command": "plannotator annotate \"$CLAUDE_TOOL_INPUT_file_path\" --hook"
-```
-
-Behavior:
-
-- **Approve** → empty stdout → hook passes → agent proceeds.
-- **Close** → empty stdout → hook passes → agent proceeds.
-- **Send Annotations** → `{"decision":"block","reason":"<feedback>"}` → hook blocks with feedback.
-
-`--hook` implies `--gate` (three-button UX). This is the recommended approach for both Claude Code PostToolUse hooks and Codex hooks.
-
-### Structured (`--json`)
-
-If you want to route on decision type explicitly — for example, only re-prompt on `annotated` and log `approved` vs `dismissed` separately — pipe through `jq` or a small shell wrapper:
-
-```bash
-#!/usr/bin/env bash
-# .claude/hooks/spec-gate.sh
-result=$(plannotator annotate "$CLAUDE_TOOL_INPUT_file_path" --gate --json)
-decision=$(echo "$result" | jq -r '.decision')
-feedback=$(echo "$result" | jq -r '.feedback // ""')
-
-case "$decision" in
-  approved|dismissed)
-    # empty stdout — hook passes through, agent proceeds
-    ;;
-  annotated)
-    # emit feedback on stdout so the hook blocks with it as the reason
-    echo "$feedback"
-    ;;
-esac
-```
-
-Exit code stays `0` for all three branches; signaling happens via stdout (empty = pass, non-empty = block). This mirrors the `--gate`-without-`--json` mode exactly — JSON just gives you a parsed decision for logging or conditional routing without changing the block contract.
-
-## Recipe 2: Stop-hook turn gate
-
-Wire `annotate-last` to Claude Code's Stop hook to pause every agent turn for human review.
-
-### Plaintext
+A Stop hook pauses the agent after every response for human review. Use `annotate-last` to open the agent's last message in Plannotator.
 
 ```json
 {
@@ -102,7 +84,7 @@ Wire `annotate-last` to Claude Code's Stop hook to pause every agent turn for hu
         "hooks": [
           {
             "type": "command",
-            "command": "plannotator annotate-last --gate",
+            "command": "plannotator annotate-last --hook",
             "timeout": 345600
           }
         ]
@@ -112,35 +94,39 @@ Wire `annotate-last` to Claude Code's Stop hook to pause every agent turn for hu
 }
 ```
 
-Behavior:
+- **Send Annotations** prevents the agent from stopping and re-prompts with feedback.
+- **Approve** or **Close** lets the turn end normally.
 
-- **Approve** → `The user approved.` on stdout. Turn ends; Claude Code reports the marker.
-- **Send Annotations** → feedback on stdout → Claude Code re-prompts with the feedback.
-- **Close** → empty stdout → turn ends.
+## Combining both
 
-Use `--hook` instead of `--gate` if you want hook-native JSON. Approve and Close emit empty stdout, Send Annotations emits `{"decision":"block","reason":"..."}` which prevents the stop and re-prompts with feedback.
+You can use PostToolUse and Stop hooks together. The PostToolUse hook gates individual file writes. The Stop hook gates the overall turn. The agent gets targeted file feedback during execution and a final review at the end.
 
-### Structured
+## Alternative modes
 
-Same pattern as the PostToolUse recipe — pipe `--gate --json` through a shell wrapper if you want distinct handling per decision.
+`--hook` is the recommended approach for hook integrations. Two other modes exist for different use cases:
+
+### `--gate` (plaintext)
+
+Three-button UX without hook-native JSON. Approve emits the line `The user approved.`, Close emits nothing, Send Annotations emits plaintext feedback. Useful for slash command templates where the agent reads stdout directly.
+
+### `--json` (structured decisions)
+
+Emits `{"decision":"approved|annotated|dismissed","feedback":"..."}` for every decision. Useful for wrapper scripts that want to parse the decision type for logging, telemetry, or conditional routing. Pair with `--gate` for all three decisions.
+
+See [Annotate Flags](/docs/commands/annotate/#flags) for the full stdout matrix.
 
 ## OpenCode and Pi
 
-The same `--gate` flag works in OpenCode's `/plannotator-annotate` and Pi's `/plannotator-annotate` slash commands:
+The same flags work in OpenCode's `/plannotator-annotate` and Pi's `/plannotator-annotate`:
 
 ```
 /plannotator-annotate spec.md --gate
 ```
 
-On those harnesses there is no stdout channel back to the agent — the plugin writes back via `session.prompt` (OpenCode) or `sendUserMessage` (Pi). Approve and Close both result in no session injection; Send Annotations injects the feedback. `--json` and `--hook` are accepted silently on these harnesses so recipes stay portable.
-
-Third-party Pi or OpenCode plugins that want explicit decision routing can read `approved` directly from the server's decision object:
-
-- OpenCode plugin: `server.waitForDecision()` returns `{ feedback, annotations, exit?, approved? }`.
-- Pi: `openMarkdownAnnotation()` and `openLastMessageAnnotation()` return `{ feedback, exit?, approved? }`.
+These harnesses don't use stdout for signaling -- the plugin writes directly to the session. Approve and Close skip injection; Send Annotations injects the feedback. `--hook` and `--json` are accepted silently so recipes stay portable across harnesses.
 
 ## Notes
 
-- Exit code is always `0`. Gate decisions are signaled via stdout, not exit code.
-- Folder annotation with `--gate` applies one decision to the whole session (not per-file). The user navigates the file browser inside the UI, annotates across files, and submits once.
-- The `--gate` UX is fully opt-in. Users running `/plannotator-annotate README.md` interactively without the flag still see the 2-button experience.
+- Exit code is always `0`. Decisions are signaled via stdout.
+- Folder annotation with `--hook` applies one decision to the whole session. The reviewer navigates files inside the UI and submits once.
+- `--hook` and `--gate` are opt-in. Interactive users running `/plannotator-annotate README.md` still see the default two-button experience.
