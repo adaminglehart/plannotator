@@ -97,5 +97,7 @@ export function parseAnnotateArgs(raw: string): ParsedAnnotateArgs {
       .trim(),
   );
 
+  if (flags.hook) flags.gate = true;
+
   return { filePath: stripAtPrefix(rawFilePath), rawFilePath, ...flags };
 }

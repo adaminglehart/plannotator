@@ -264,11 +264,11 @@ describe("parseAnnotateArgs", () => {
     });
   });
 
-  test("--hook alone is stripped from path", () => {
+  test("--hook alone implies gate", () => {
     expect(parseAnnotateArgs("spec.md --hook")).toEqual({
       filePath: "spec.md",
       rawFilePath: "spec.md",
-      gate: false,
+      gate: true,
       json: false,
       hook: true,
     });
