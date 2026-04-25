@@ -16,8 +16,8 @@
  * - /plannotator-annotate command for markdown annotation
  */
 
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { basename, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
 import type { ThinkingLevel } from "@mariozechner/pi-agent-core";
 import { Type } from "@mariozechner/pi-ai";
 import type {
@@ -82,6 +82,7 @@ import {
 	getToolsForPhase,
 	isPlanWritePathAllowed,
 	PLAN_SUBMIT_TOOL,
+	ENTER_PLAN_MODE_TOOL,
 	type Phase,
 	stripPlanningOnlyTools,
 } from "./tool-scope.ts";
@@ -953,6 +954,144 @@ export default function plannotator(pi: ExtensionAPI): void {
 					},
 				],
 				details: { approved: false, feedback: feedbackText },
+			};
+		},
+	});
+
+	// ── enter_plan_mode Tool ────────────────────────────────────────────
+
+	pi.registerTool({
+		name: ENTER_PLAN_MODE_TOOL,
+		label: "Enter Plan Mode",
+		description:
+			"Enter Plannotator planning mode programmatically. " +
+			"Use this when you (the agent) determine that a task requires planning before execution. " +
+			"Call this tool with a plan file path, then immediately begin exploring the codebase and writing your plan. " +
+			"After writing the plan, use plannotator_submit_plan to submit it for user review.",
+		parameters: Type.Object({
+			planFilePath: Type.String({
+				description:
+					"Path to the markdown plan file to create/use, relative to the working directory. " +
+					"Convention: use 'PLAN.md' at repo root for a single focused plan, or 'plans/<short-name>.md' for multiple plans. " +
+					"Must end in .md or .mdx and resolve inside cwd.",
+			}),
+			createIfMissing: Type.Optional(
+				Type.Boolean({
+					description: "If true, create an empty plan file if it doesn't exist. Defaults to true.",
+					default: true,
+				})
+			),
+		}) as any,
+
+		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+			const inputPath = (params as { planFilePath?: string })?.planFilePath?.trim();
+			const createIfMissing = (params as { createIfMissing?: boolean })?.createIfMissing ?? true;
+
+			if (!inputPath) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: ${ENTER_PLAN_MODE_TOOL} requires a planFilePath argument (e.g., "PLAN.md" or "plans/feature.md").`,
+						},
+					],
+					details: { entered: false },
+				};
+			}
+
+			if (!isPlanWritePathAllowed(inputPath, ctx.cwd)) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Error: plan file must be a markdown file (.md or .mdx) inside the working directory. Rejected: ${inputPath}`,
+						},
+					],
+					details: { entered: false },
+				};
+			}
+
+			// If not in planning phase, enter it
+			if (phase !== "planning") {
+				await enterPlanning(ctx);
+			}
+
+			const fullPath = resolve(ctx.cwd, inputPath);
+
+			// Create file if it doesn't exist and createIfMissing is true
+			if (createIfMissing) {
+				try {
+					const fileExists = existsSync(fullPath);
+					if (!fileExists) {
+						// Create parent directories if needed
+						// Parent dir creation uses pre-imported functions
+						const parentDir = dirname(fullPath);
+						if (!existsSync(parentDir)) {
+							mkdirSync(parentDir, { recursive: true });
+						}
+						// Write skeleton plan file
+						const initialContent = `# Plan: ${inputPath.replace(/\\/g, "/").split("/").pop()?.replace(/\\.mdx?$/i, "") || "Task"}
+
+## Context
+<!-- Describe the problem, feature, or change -->
+
+## Approach
+<!-- Your recommended approach -->
+
+## Files to Modify
+<!-- List critical files that will be changed -->
+
+## Reuse
+<!-- Reference existing functions/utilities to reuse -->
+
+## Steps
+<!-- Implementation checklist:
+- [ ] Step 1
+- [ ] Step 2
+-->
+
+## Verification
+<!-- How to test the changes -->
+`;
+						// Uses pre-imported writeFileSync
+						writeFileSync(fullPath, initialContent, "utf-8");
+					}
+				} catch (err) {
+					return {
+						content: [
+							{
+								type: "text",
+								text: `Error: failed to create plan file at ${inputPath}: ${err instanceof Error ? err.message : String(err)}`,
+							},
+						],
+						details: { entered: false },
+					};
+				}
+			}
+
+			// Store the plan file path for later use
+			lastSubmittedPath = inputPath;
+
+			// Re-read plan content if file exists to populate checklist
+			try {
+				if (existsSync(fullPath)) {
+					const content = readFileSync(fullPath, "utf-8");
+					checklistItems = parseChecklist(content);
+				}
+			} catch {
+				// Ignore read errors
+			}
+
+			persistState();
+
+			return {
+				content: [
+					{
+						type: "text",
+						text: `Planning mode enabled. Plan file: ${inputPath}\n\nYou can now:\n- Explore the codebase using read, grep, find, ls, bash\n- Write/edit the plan file (markdown only)\n- Call plannotator_submit_plan when ready for review\n\nRemember: During planning, you cannot make code changes. Focus on understanding and documenting your approach.`,
+					},
+				],
+				details: { entered: true, planFilePath: inputPath },
 			};
 		},
 	});

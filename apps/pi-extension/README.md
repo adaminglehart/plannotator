@@ -47,6 +47,25 @@ pi --plan
 
 Or toggle it during a session with `/plannotator` or `Ctrl+Alt+P`. The command accepts an optional file path argument (`/plannotator plans/auth.md`) or prompts you to choose one interactively.
 
+### Programmatic plan mode (Agent-initiated)
+
+The agent can enter planning mode itself by calling the `enter_plan_mode` tool. This is useful when the agent detects a complex task that requires planning:
+
+```
+enter_plan_mode({
+  planFilePath: "plans/feature-name.md",
+  createIfMissing: true
+})
+```
+
+When called:
+1. The extension transitions to planning phase
+2. A skeleton plan file is created with helpful sections
+3. The agent can then explore and write the plan
+4. When ready, the agent calls `plannotator_submit_plan` for review
+
+This allows the agent to decide when planning is appropriate without requiring the user to manually run `/plannotator`.
+
 In plan mode the agent is restricted — destructive commands are blocked, writes are limited to the plan file. It explores your codebase, then writes a plan using markdown checklists:
 
 ```markdown

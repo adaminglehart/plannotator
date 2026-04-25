@@ -3,9 +3,10 @@ import { extname, isAbsolute, relative, resolve } from "node:path";
 export type Phase = "idle" | "planning" | "executing";
 
 export const PLAN_SUBMIT_TOOL = "plannotator_submit_plan";
+export const ENTER_PLAN_MODE_TOOL = "enter_plan_mode";
 export const PLANNING_DISCOVERY_TOOLS = ["grep", "find", "ls"] as const;
 
-const PLANNING_ONLY_TOOLS = new Set<string>([PLAN_SUBMIT_TOOL]);
+const PLANNING_ONLY_TOOLS = new Set<string>([PLAN_SUBMIT_TOOL, ENTER_PLAN_MODE_TOOL]);
 const ALLOWED_PLAN_EXTENSIONS = new Set<string>([".md", ".mdx"]);
 
 export function stripPlanningOnlyTools(tools: readonly string[]): string[] {
@@ -22,7 +23,7 @@ export function getToolsForPhase(
 	}
 
 	return [
-		...new Set([...tools, ...PLANNING_DISCOVERY_TOOLS, PLAN_SUBMIT_TOOL]),
+		...new Set([...tools, ...PLANNING_DISCOVERY_TOOLS, PLAN_SUBMIT_TOOL, ENTER_PLAN_MODE_TOOL]),
 	];
 }
 
