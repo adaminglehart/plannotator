@@ -14,10 +14,20 @@
   "bugs": {
     "url": "https://github.com/backnotprop/plannotator/issues"
   },
-  "keywords": ["pi-package", "plannotator", "plan-review", "ai-agent", "coding-agent"],
+  "keywords": [
+    "pi-package",
+    "plannotator",
+    "plan-review",
+    "ai-agent",
+    "coding-agent"
+  ],
   "pi": {
-    "extensions": ["./"],
-    "skills": ["./skills"]
+    "extensions": [
+      "./"
+    ],
+    "skills": [
+      "./skills"
+    ]
   },
   "files": [
     "index.ts",
@@ -43,7 +53,8 @@
   "dependencies": {
     "@pierre/diffs": "^1.1.12",
     "turndown": "^7.2.4",
-    "@joplin/turndown-plugin-gfm": "^1.0.64"
+    "@joplin/turndown-plugin-gfm": "^1.0.64",
+    "@mixmark-io/domino": "^2.2.0"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": ">=0.53.0"

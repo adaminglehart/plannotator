@@ -90,6 +90,7 @@
       "version": "0.19.14",
       "dependencies": {
         "@joplin/turndown-plugin-gfm": "^1.0.64",
+        "@mixmark-io/domino": "^2.2.0",
         "@pierre/diffs": "^1.1.12",
         "turndown": "^7.2.4",
       },
